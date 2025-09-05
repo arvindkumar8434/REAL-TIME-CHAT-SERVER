@@ -1,0 +1,53 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"><title>Multiroom Chat Test</title></head>
+<body style="font-family:Arial;max-width:900px;margin:20px">
+<h2>Multi-room Chat Test</h2>
+<label>Username: <input id="username" value="guest"/></label>
+<label>Room: <input id="room" value="general"/></label>
+<button id="connect">Connect</button>
+<button id="join">Join</button>
+<button id="leave">Leave</button>
+<div id="status"></div>
+<div id="messages" style="border:1px solid #ddd;padding:12px;height:300px;overflow:auto;margin-top:8px"></div>
+<input id="text" style="width:70%"/><button id="send">Send</button>
+<script src="https://cdn.socket.io/4.8.1/socket.io.min.js"></script>
+<script>
+let socket;
+function log(t){const d=document.createElement('div');d.innerText=t;document.getElementById('messages').appendChild(d);document.getElementById('messages').scrollTop=1e9;}
+document.getElementById('connect').onclick = () => {
+  const username = document.getElementById('username').value || 'guest';
+  socket = io({ auth: { username } });
+  socket.on('connect', ()=>document.getElementById('status').innerText = 'connected: '+socket.id);
+  socket.on('connected', d=>console.log('init',d));
+  socket.on('message', m => log(`${m.ts} | ${m.room} | ${m.author}: ${m.text}`));
+  socket.on('user_joined', p => log(`* ${p.user} joined ${p.room}`));
+  socket.on('user_left', p => log(`* ${p.user} left ${p.room}`));
+  socket.on('typing', p => log(`* ${p.user} is ${p.isTyping?'typing...':'stopped'}`));
+  socket.on('connect_error', e=>document.getElementById('status').innerText='err: '+e.message);
+};
+document.getElementById('join').onclick = () => {
+  const room = document.getElementById('room').value;
+  socket.emit('join', room, res => {
+    if(res.ok){ log(`Joined ${room} (members=${res.memberCount})`); res.history.forEach(h=>log(`[history] ${h.ts} ${h.author}: ${h.text}`)); }
+    else log('join failed: '+JSON.stringify(res));
+  });
+};
+document.getElementById('leave').onclick = () => {
+  const room = document.getElementById('room').value;
+  socket.emit('leave', room, res=>log('leave cb: '+JSON.stringify(res)));
+};
+document.getElementById('send').onclick = () => {
+  const room = document.getElementById('room').value;
+  const text = document.getElementById('text').value;
+  socket.emit('message', { room, text }, ack => { if(ack.ok) log('sent id='+ack.id); else log('send failed'); });
+  document.getElementById('text').value='';
+};
+document.getElementById('text').addEventListener('input', ()=> {
+  const room = document.getElementById('room').value;
+  socket && socket.emit('typing', { room, isTyping: true });
+  clearTimeout(window._tto); window._tto = setTimeout(()=> socket && socket.emit('typing',{room,isTyping:false}),800);
+});
+</script>
+</body>
+</html>
